@@ -1,20 +1,27 @@
 import React, {useState} from 'react';
 import {Search, SlidersHorizontal, ArrowRight, Sparkles, X} from 'lucide-react';
 import './discover.css';
+import {suggestions,artistScore} from './search.js';
+import './search-suggestions.css';
 
 const initial={term:'',style:'',city:'',budget:''};
-const normalize=value=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+
 export default function Discover({artists,renderCards}){
  const [filters,setFilters]=useState(initial);
  const [submitted,setSubmitted]=useState(null);
+ const [suggestionsOpen,setSuggestionsOpen]=useState(false);
+ const [activeSuggestion,setActiveSuggestion]=useState(-1);
+ const options=suggestions(artists,filters.term);
+ const showSuggestions=suggestionsOpen&&filters.term.trim().length>0;
+ const choose=value=>{setFilters(previous=>({...previous,term:value}));setSuggestionsOpen(false);setActiveSuggestion(-1)};
  const update=(key,value)=>setFilters(previous=>({...previous,[key]:value}));
- const results=submitted?artists.filter(a=>(!submitted.term||normalize(`${a.name} ${a.studio} ${a.style} ${a.city}`).includes(normalize(submitted.term)))&&(!submitted.style||a.style===submitted.style)&&(!submitted.city||a.city===submitted.city)&&(!submitted.budget||a.price<=Number(submitted.budget))):[];
+ const results=submitted?artists.filter(a=>(!submitted.term||artistScore(a,submitted.term)>0)&&(!submitted.style||a.style===submitted.style)&&(!submitted.city||a.city===submitted.city)&&(!submitted.budget||a.price<=Number(submitted.budget))).sort((a,b)=>artistScore(b,submitted.term)-artistScore(a,submitted.term)):[];
  const dirty=submitted&&Object.keys(initial).some(key=>filters[key]!==submitted[key]);
- const clear=()=>{setFilters(initial);setSubmitted(null)};
+ const clear=()=>{setFilters(initial);setSubmitted(null);setSuggestionsOpen(false);setActiveSuggestion(-1)};
  return <section className="discover-page">
   <div className="discovery-intro"><span className="eyebrow">SUA IDEIA É O PONTO DE PARTIDA</span><h1>O próximo traço<br/>começa com a <em>sua busca.</em></h1><p>Encontre quem combina com sua ideia. Escolha o estilo, a cidade e o orçamento para descobrir sua próxima conexão.</p></div>
-  <form className="discovery-form" onSubmit={e=>{e.preventDefault();setSubmitted({...filters,term:filters.term.trim()})}}>
-   <label className="discovery-search"><span>O que você está procurando?</span><div><Search size={23}/><input aria-label="Buscar artista, estúdio, estilo ou cidade" placeholder="Artista, estúdio, estilo ou cidade…" value={filters.term} onChange={e=>update('term',e.target.value)}/></div></label>
+  <form className="discovery-form" onSubmit={e=>{e.preventDefault();setSuggestionsOpen(false);setSubmitted({...filters,term:filters.term.trim()})}}>
+   <div className="search-autocomplete" onBlur={e=>{if(!e.currentTarget.contains(e.relatedTarget))setSuggestionsOpen(false)}}><label className="discovery-search"><span>O que você está procurando?</span><div><Search size={23}/><input role="combobox" aria-autocomplete="list" aria-expanded={showSuggestions} aria-controls="search-options" aria-activedescendant={showSuggestions&&activeSuggestion>=0?'search-option-'+activeSuggestion:undefined} aria-label="Buscar artista, estúdio, estilo ou cidade" autoComplete="off" placeholder="Artista, estúdio, estilo ou cidade…" value={filters.term} onFocus={()=>setSuggestionsOpen(true)} onChange={e=>{update('term',e.target.value);setSuggestionsOpen(true);setActiveSuggestion(-1)}} onKeyDown={e=>{if(e.key==='Escape'){setSuggestionsOpen(false);setActiveSuggestion(-1)}else if((e.key==='ArrowDown'||e.key==='ArrowUp')&&options.length){e.preventDefault();setSuggestionsOpen(true);setActiveSuggestion(previous=>e.key==='ArrowDown'?(previous+1)%options.length:(previous<=0?options.length-1:previous-1))}else if(e.key==='Enter'&&showSuggestions&&activeSuggestion>=0&&options[activeSuggestion]){e.preventDefault();choose(options[activeSuggestion].value)}}}/></div></label>{showSuggestions&&<div className="suggestions-panel"><span className="suggestions-title">OPÇÕES MAIS PRÓXIMAS</span><ul id="search-options" role="listbox" aria-label="Sugestões de pesquisa">{options.map((option,index)=><li id={'search-option-'+index} key={option.label+option.value} role="option" aria-selected={index===activeSuggestion} onMouseDown={e=>e.preventDefault()} onMouseEnter={()=>setActiveSuggestion(index)} onClick={()=>choose(option.value)}><Search size={15}/><strong>{option.value}</strong><span>{option.label}</span><ArrowRight size={14}/></li>)}</ul>{!options.length&&<p className="suggestions-empty">Nenhuma opção próxima. Experimente outro termo.</p>}<span className="suggestions-hint">Escolha uma opção e clique em Buscar artistas.</span></div>}<span className="sr-only" role="status">{showSuggestions?options.length+' sugestões disponíveis. Use as setas para navegar.':''}</span></div>
    <div className="discovery-filter-heading"><SlidersHorizontal size={15}/><span>Deixe a busca com a sua cara</span><small>Todos os filtros são opcionais</small></div>
    <div className="discovery-filters"><label><span>Estilo de tatuagem</span><select value={filters.style} onChange={e=>update('style',e.target.value)}><option value="">Todos os estilos</option>{[...new Set(artists.map(a=>a.style))].map(style=><option key={style}>{style}</option>)}</select></label><label><span>Onde você quer tatuar?</span><select value={filters.city} onChange={e=>update('city',e.target.value)}><option value="">Todas as cidades</option>{[...new Set(artists.map(a=>a.city))].map(city=><option key={city}>{city}</option>)}</select></label><label><span>Orçamento por sessão</span><select value={filters.budget} onChange={e=>update('budget',e.target.value)}><option value="">Qualquer valor</option><option value="400">Até R$ 400</option><option value="500">Até R$ 500</option><option value="700">Até R$ 700</option></select></label></div>
    <div className="discovery-actions"><button type="button" className="text-button muted" onClick={clear}><X size={14}/>Limpar busca</button><button className="button red" type="submit"><Search size={17}/>Buscar artistas <ArrowRight size={17}/></button></div>
